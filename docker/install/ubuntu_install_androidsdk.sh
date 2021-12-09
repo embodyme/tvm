@@ -23,11 +23,11 @@ set -o pipefail
 
 ANDROID_HOME=/opt/android-sdk-linux
 ASDKTOOLS_HOME=/opt/android-sdk-tools
-ASDKTOOLS_VERSION=3859397
-ASDKTOOLS_SHA256=444e22ce8ca0f67353bda4b85175ed3731cae3ffa695ca18119cbacef1c1bea0
+ASDKTOOLS_VERSION=4333796
+#ASDKTOOLS_SHA256=444e22ce8ca0f67353bda4b85175ed3731cae3ffa695ca18119cbacef1c1bea0
 
 wget -q http://dl.google.com/android/repository/sdk-tools-linux-${ASDKTOOLS_VERSION}.zip -O sdk-tools-linux.zip
-echo "${ASDKTOOLS_SHA256} *sdk-tools-linux.zip" | sha256sum --check -
+#echo "${ASDKTOOLS_SHA256} *sdk-tools-linux.zip" | sha256sum --check -
 unzip sdk-tools-linux.zip
 rm sdk-tools-linux.zip
 mv tools "${ASDKTOOLS_HOME}/"
@@ -76,7 +76,13 @@ mkdir /root/.android 2>/dev/null || true
 touch /root/.android/repositories.cfg
 # NOTE: sdkmanager returns exit code 141
 (yes || true) | sdkmanager --licenses --sdk_root="$ANDROID_HOME" || true
-sdkmanager --verbose --package_file=/install/package-list-minimal.txt --sdk_root="$ANDROID_HOME"
+#sdkmanager --verbose --package_file /install/package-list-minimal.txt --sdk_root="$ANDROID_HOME"
+
+# --package_file command line argument is broken in latest sdkmanager release, so we do this instead
+# https://github.com/jangrewe/gitlab-ci-android/issues/23
+while read -r package; do PACKAGES="${PACKAGES}${package} "; done < /install/package-list-minimal.txt && \
+  sdkmanager --verbose --sdk_root="$ANDROID_HOME" ${PACKAGES}
+
 test -d "${ANDROID_HOME}/build-tools/27.0.3"
 test -d "${ANDROID_HOME}/ndk/21.3.6528147"
 for f in ${ANDROID_HOME}/ndk/21.3.6528147/* ; do

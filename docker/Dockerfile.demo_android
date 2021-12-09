@@ -16,15 +16,20 @@
 # under the License.
 
 # Minimum docker image for demo purposes
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 
 RUN apt-get update --fix-missing
+
+# set timezone to avoid user input with tzdata (added by Ben on 7 Dec 2021)
+# https://grigorkh.medium.com/fix-tzdata-hangs-docker-image-build-cdb52cc3360d
+ENV TZ=Asia/Tokyo
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 COPY install/ubuntu_install_core.sh /install/ubuntu_install_core.sh
 RUN bash /install/ubuntu_install_core.sh
 
-COPY install/ubuntu_install_python.sh /install/ubuntu_install_python.sh
-RUN bash /install/ubuntu_install_python.sh
+COPY install/ubuntu1804_install_python.sh /install/ubuntu1804_install_python.sh
+RUN bash /install/ubuntu1804_install_python.sh
 
 COPY install/ubuntu_install_python_package.sh /install/ubuntu_install_python_package.sh
 RUN bash /install/ubuntu_install_python_package.sh
@@ -32,24 +37,82 @@ RUN bash /install/ubuntu_install_python_package.sh
 COPY install/ubuntu_install_tensorflow.sh /install/ubuntu_install_tensorflow.sh
 RUN bash /install/ubuntu_install_tensorflow.sh
 
-COPY install/ubuntu_install_java.sh /install/ubuntu_install_java.sh
-RUN bash /install/ubuntu_install_java.sh
+#COPY install/ubuntu_install_java.sh /install/ubuntu_install_java.sh
+#RUN bash /install/ubuntu_install_java.sh
 
-COPY install/ubuntu_install_llvm.sh /install/ubuntu_install_llvm.sh
-RUN bash /install/ubuntu_install_llvm.sh
+COPY install/ubuntu1804_install_llvm.sh /install/ubuntu1804_install_llvm.sh
+RUN bash /install/ubuntu1804_install_llvm.sh
 
 COPY install/ubuntu_install_gradle.sh /install/ubuntu_install_gradle.sh
 RUN bash /install/ubuntu_install_gradle.sh
 
-COPY install/ubuntu_install_androidsdk.sh /install/ubuntu_install_androidsdk.sh
-RUN bash /install/ubuntu_install_androidsdk.sh
-
 COPY install/ubuntu_install_vulkan.sh /install/ubuntu_install_vulkan.sh
 RUN bash /install/ubuntu_install_vulkan.sh
-
 ENV VULKAN_SDK=/usr
 
 RUN git clone https://github.com/KhronosGroup/OpenCL-Headers /usr/local/OpenCL-Headers/
+
+##########
+## Java ##
+##########
+
+RUN apt-get update && apt-get install -y openjdk-8-jdk maven
+ENV JAVA_HOME /usr/lib/jvm/java-8-openjdk-amd64/
+
+##################
+##  Android SDK ##
+##################
+
+# (commented out by Ben on 8 Dec 2021)
+#COPY install/ubuntu_install_androidsdk.sh /install/ubuntu_install_androidsdk.sh
+#RUN bash /install/ubuntu_install_androidsdk.sh
+
+# NOTE:  I tried using JDK 11, but many of the TVM4J build scripts use `javah`,
+# which was removed in Java 11.  We should spend some effort to upgrade later,
+# but for now I will stick with JDK 8.
+# JDK11 Dockerfile: https://github.com/jangrewe/gitlab-ci-android/blob/master/Dockerfile
+# Another: https://github.com/thyrlian/AndroidSDK/blob/master/android-sdk/Dockerfile
+
+ENV ANDROID_TOOLS_VERSION "7583922"
+ENV ANDROID_SDK_ROOT "/opt/android-sdk-tools"
+ENV ANDROID_HOME "${ANDROID_SDK_ROOT}"
+ENV PATH "$PATH:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools"
+
+# configure java
+ENV JAVA_HOME /usr/lib/jvm/java-8-openjdk-amd64/
+RUN rm -f /etc/ssl/certs/java/cacerts; \
+    /var/lib/dpkg/info/ca-certificates-java.postinst configure
+
+# android commandlinetools
+RUN curl https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_TOOLS_VERSION}_latest.zip > /cmdline-tools.zip \
+    && mkdir -p ${ANDROID_SDK_ROOT}/cmdline-tools \
+    && unzip /cmdline-tools.zip -d ${ANDROID_SDK_ROOT}/cmdline-tools \
+    && mv ${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools ${ANDROID_SDK_ROOT}/cmdline-tools/latest \
+    && rm -v /cmdline-tools.zip
+
+# accept licenses
+RUN mkdir -p $ANDROID_SDK_ROOT/licenses/ \
+    && echo "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > $ANDROID_SDK_ROOT/licenses/android-sdk-license \
+    && echo "84831b9409646a918e30573bab4c9c91346d8abd\n504667f4c0de7af1a06de9f4b1727b84351f2910" > $ANDROID_SDK_ROOT/licenses/android-sdk-preview-license \
+    && yes | sdkmanager --licenses
+
+ADD install/android-packages.txt /install/android-packages.txt
+RUN sdkmanager --package_file=/install/android-packages.txt
+
+# https://askubuntu.com/questions/885658/android-sdk-repositories-cfg-could-not-be-loaded
+RUN mkdir -p /root/.android \
+    && touch /root/.android/repositories.cfg
+
+RUN sdkmanager --update
+
+# TODO:  android_rpc project includes a fix to make the old sdkmanager work with
+# $http_proxy variables.  How to achieve the same thing for the new commandline-tools?
+
+ENV ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/21.3.6528147/
+
+#########
+## TVM ##
+#########
 
 # Build TVM
 RUN cd /usr && \
@@ -58,7 +121,7 @@ RUN cd /usr && \
     mkdir -p build && \
     cd build && \
     cmake \
-        -DUSE_LLVM=llvm-config-8 \
+        -DUSE_LLVM=ON \
         -DUSE_RPC=ON \
         -DUSE_SORT=ON \
         -DUSE_GRAPH_EXECUTOR=ON \
@@ -68,5 +131,9 @@ RUN cd /usr && \
 
 # Environment variables
 ENV PYTHONPATH=/usr/tvm/python:/usr/tvm/vta/python:${PYTHONPATH}
-ENV ANDROID_HOME=/opt/android-sdk-linux/
-ENV ANDROID_NDK_HOME=/opt/android-sdk-linux/ndk/21.3.6528147/
+
+# Build tvm4j
+# (https://github.com/apache/tvm/blob/main/jvm/README.md)
+RUN cd /usr/tvm && \
+    make jvmpkg && \
+    make jvminstall

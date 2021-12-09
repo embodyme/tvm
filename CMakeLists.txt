@@ -405,6 +405,7 @@ if(USE_GTEST)
   if(GTEST_FOUND)
     enable_testing()
     include(CTest)
+    include(GoogleTest)
   endif()
 endif()
 
