@@ -22,4 +22,4 @@ javah -o $CURR_DIR/org_apache_tvm_native_c_api.h -cp "$ROOT_DIR/jvm/core/target/
 cp -f $ROOT_DIR/jvm/native/src/main/native/org_apache_tvm_native_c_api.cc $CURR_DIR/ || exit -1
 cp -f $ROOT_DIR/jvm/native/src/main/native/jni_helper_func.h $CURR_DIR/ || exit -1
 rm -rf $CURR_DIR/../libs
-ndk-build --directory=$CURR_DIR
+$ANDROID_NDK_HOME/ndk-build --directory=$CURR_DIR

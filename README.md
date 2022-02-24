@@ -55,11 +55,14 @@ If the build succeeds, your docker image should have working copies of:
 The docker container can be started with the following command, which launches an interactive shell.  Notice that we map port 9190 in the container to port 9190 on the host machine.
 
 ```bash
-docker run --pid=host -h tvm -v $PWD:/workspace \
-       -w /workspace -p 9190:9190 --name tvm -it tvm.demo_android bash
+docker run --pid=host -h tvm --privileged -v $PWD:/workspace        -w /workspace -p 9190:9190 --name tvm -it --rm tvm.demo_android bash
 ```
 
 You can run `docker exec -it tvm bash` to open a new shell in the container.
+
+### Troubleshooting
+
+If you have connected an Android device via USB, but it doesn't show up when running `adb devices` in the docker container, [run `adb kill-server` *outside* the docker container](https://stackoverflow.com/a/49003099) to make sure there aren't two `adb` daemons running.  Make sure you are running the docker container with the `--privileged` option.
 
 ## Evaluating TVM Performance on Android
 
